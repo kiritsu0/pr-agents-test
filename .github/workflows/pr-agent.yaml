@@ -15,8 +15,8 @@ jobs:
 
           # Авто-запуск инструментов для GitHub Action (опционально)
           github_action_config.auto_review: "true"
-          github_action_config.pr_actions: '["opened","synchronize"]'
-
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "true"
           # Модель (опционально)
           # config.model: "gpt-4o"
 
