@@ -21,74 +21,67 @@ jobs:
         run: |
           curl https://cursor.com/install -fsS | bash
           echo "$HOME/.cursor/bin" >> $GITHUB_PATH    
-      - name: Perform Cursor code review (separate comments + request changes)
+      - name: Perform Cursor code review
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GH_TOKEN: ${{ github.token }}
-          MODEL: gpt-5
         run: |
-          set -euo pipefail
-
           cursor-agent --force --model "$MODEL" --output-format=text --print "$(cat <<'PROMPT'
-          You are operating in a GitHub Actions runner to review a PR.
-          Use gh CLI (authenticated via GH_TOKEN). You can post multiple separate comments and request changes.
-
-          CONTEXT:
+          You are operating in a GitHub Actions runner to review a PR. 
+          The gh CLI is available and authenticated via GH_TOKEN. 
+          You may comment on pull requests.
+          Context:
           - Repo: ${{ github.repository }}
           - PR: #${{ github.event.pull_request.number }}
           - Head: ${{ github.event.pull_request.head.sha }}
           - Base: ${{ github.event.pull_request.base.sha }}
 
-          REPOSITORY RULES (ENFORCE):
-          1) Scope of PR
-            - One PR must change code only in ONE service/directory.
-            - If >1 service → ask to split PR.
-            - If >2 services → explicitly recommend separate PRs.
-            Services are top-level folders: service_1/, service_2/, service_3/, service_4/, service_5/.
-            Ignore infra at root: .github/**, .cursor/**, *.md, lock-files.
+          REPOSITORY RULES (STRICTLY ENFORCE):
 
-          2) Vue store anti-pattern
-            - No `watch()` inside store; move side-effects/watchers to components or composables.
+          1) Scope of PR  
+          - Один PR должен менять код только в **одном** сервисе/директории.  
+          - Если затронуто **больше одного** сервиса — попроси разделить PR.  
+          - Если затронуто **больше двух** сервисов — обязательно порекомендуй вынести часть изменений в отдельные PR.
 
-          3) Props with 4+ fields → named type + defineProps<Props>()
+          2) Vue store anti-pattern  
+          - Нельзя создавать `watch()` внутри store.  
+          - Сайд-эффекты и наблюдение должны быть в компоненте или composable.
 
-          4) No inline object types in Ref / ref()
+          3) Props с 4+ полями → именованный тип  
+          - Если в defineProps ≥4 полей, вынеси интерфейс Props и используй defineProps<Props>().
 
-          5) Magic numbers/strings → named const (or consts.ts)
+          4) Inline Ref types запрещены  
+          - Не использовать Ref<{ ... }> inline. Вынести объект в именованный тип.
 
-          6) Complex :class object (>1 key AND any conditional) → computed
+          5) Magic numbers/strings  
+          - Вынести в именованные const рядом или в consts.ts.
 
-          7) Priority: 🔒 security, ⚡ performance, proper error handling around external calls and edge cases.
+          6) Сложные :class → computed  
+          - Если в объекте для :class >1 ключа и есть условие — собрать его в computed.
 
-          WHAT TO DO:
-          - Build a list of issues from the PR diff (focus on clear, high-severity rule violations).
-          - For EACH issue, post ONE separate PR comment:
-              gh pr comment ${{ github.event.pull_request.number }} --body "<short 1-2 sentence actionable comment with an emoji: 🚨/🔒/⚡/⚠️/✨>"
-            Keep comments concise, non-duplicated, and point to the exact file/line context in text.
-          - After posting all comments:
-            - If you posted >=1 issue comment OR found violation of the scope-of-PR rule → run:
-                gh pr review ${{ github.event.pull_request.number }} --request-changes -b "Automated review found issues. See individual comments."
-              And then PRINT EXACTLY on the LAST LINE:
-                RESULT:REQUEST_CHANGES
-            - Otherwise:
-                gh pr review ${{ github.event.pull_request.number }} --comment -b "Automated review: no high-severity issues found."
-                And then PRINT EXACTLY on the LAST LINE:
-                RESULT:OK
+          7) Security / Performance / Error handling  
+          - Всегда проверяй безопасность, производительность и обработку ошибок приоритетно.
 
-          INFO YOU CAN USE:
-          - Full diff:      gh pr diff ${{ github.event.pull_request.number }}
-          - Changed files:  gh pr diff ${{ github.event.pull_request.number }} --name-only
-          - Existing notes: gh pr view ${{ github.event.pull_request.number }} --json comments
+          OBJECTIVES:
+          1) Re-check prior comments and reply ✅ Resolved if addressed.
+          2) Review the current PR diff and flag only clear, high-severity issues.
+          3) Apply the repository rules above; enforce scope-of-PR policies.
+          4) Leave concise inline comments (1–2 sentences) on changed lines + a short summary.
 
-          COMMENT STYLE:
-          - 1 issue → 1 comment (separate), keep it short and specific, include a concrete fix hint.
-          - Use emojis: 🚨 Critical 🔒 Security ⚡ Performance ⚠️ Logic ✅ Resolved ✨ Improvement
+          PROCEDURE:
+          - Get existing comments: gh pr view ${{ github.event.pull_request.number }} --json comments
+          - Get diff: gh pr diff ${{ github.event.pull_request.number }}
+          - Get changed file names: gh pr diff ${{ github.event.pull_request.number }} --name-only
+          - Avoid duplicates: skip if similar feedback already exists on/near the same lines
 
+          COMMENTING RULES:
+          - Max 10 inline comments total; prioritize 🔒 security / ⚡ performance / ⚠️ logic
+          - 1 issue per comment; point to exact line(s); concrete and actionable
+          - Emojis: 🚨 Critical 🔒 Security ⚡ Performance ⚠️ Logic ✅ Resolved ✨ Improvement
+
+          SUBMISSION:
+          - Submit one review with inline comments + a concise summary
+          - Use only: gh pr review ${{ github.event.pull_request.number }} --comment
+          - Do not approve or request changes
           PROMPT
-          )" | tee /tmp/cursor.out
-
-              # Если агент напечатал финальный маркер REQUEST_CHANGES — падаем шагом (блокируем merge)
-              if tail -n1 /tmp/cursor.out | grep -q 'RESULT:REQUEST_CHANGES'; then
-                echo "Detected issues → failing the job to block merge."
-                exit 1
-              fi
+          )"
