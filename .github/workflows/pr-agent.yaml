@@ -25,7 +25,7 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GH_TOKEN: ${{ github.token }}
-          MODEL: gpt-4o
+          MODEL: gpt-5
         run: |
           set -euo pipefail
 
