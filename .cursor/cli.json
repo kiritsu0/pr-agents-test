@@ -1,5 +1,7 @@
 {
+  "$schema": "https://cursor.sh/schema/cli.json",
   "permissions": {
+    "allow": ["gh"],
     "deny": ["Shell(git push)", "Shell(gh pr create)", "Write(**)"]
   }
 }
