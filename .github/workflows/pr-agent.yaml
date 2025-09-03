@@ -1,0 +1,87 @@
+name: Cursor Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+  
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install Cursor CLI
+        run: |
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.cursor/bin" >> $GITHUB_PATH    
+      - name: Perform Cursor code review
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cursor-agent --force --model "$MODEL" --output-format=text --print "$(cat <<'PROMPT'
+          You are operating in a GitHub Actions runner to review a PR. 
+          The gh CLI is available and authenticated via GH_TOKEN. 
+          You may comment on pull requests.
+          Context:
+          - Repo: ${{ github.repository }}
+          - PR: #${{ github.event.pull_request.number }}
+          - Head: ${{ github.event.pull_request.head.sha }}
+          - Base: ${{ github.event.pull_request.base.sha }}
+
+          REPOSITORY RULES (STRICTLY ENFORCE):
+
+          1) Scope of PR  
+          - Один PR должен менять код только в **одном** сервисе/директории.  
+          - Если затронуто **больше одного** сервиса — попроси разделить PR.  
+          - Если затронуто **больше двух** сервисов — обязательно порекомендуй вынести часть изменений в отдельные PR.
+
+          2) Vue store anti-pattern  
+          - Нельзя создавать `watch()` внутри store.  
+          - Сайд-эффекты и наблюдение должны быть в компоненте или composable.
+
+          3) Props с 4+ полями → именованный тип  
+          - Если в defineProps ≥4 полей, вынеси интерфейс Props и используй defineProps<Props>().
+
+          4) Inline Ref types запрещены  
+          - Не использовать Ref<{ ... }> inline. Вынести объект в именованный тип.
+
+          5) Magic numbers/strings  
+          - Вынести в именованные const рядом или в consts.ts.
+
+          6) Сложные :class → computed  
+          - Если в объекте для :class >1 ключа и есть условие — собрать его в computed.
+
+          7) Security / Performance / Error handling  
+          - Всегда проверяй безопасность, производительность и обработку ошибок приоритетно.
+
+          OBJECTIVES:
+          1) Re-check prior comments and reply ✅ Resolved if addressed.
+          2) Review the current PR diff and flag only clear, high-severity issues.
+          3) Apply the repository rules above; enforce scope-of-PR policies.
+          4) Leave concise inline comments (1–2 sentences) on changed lines + a short summary.
+
+          PROCEDURE:
+          - Get existing comments: gh pr view ${{ github.event.pull_request.number }} --json comments
+          - Get diff: gh pr diff ${{ github.event.pull_request.number }}
+          - Get changed file names: gh pr diff ${{ github.event.pull_request.number }} --name-only
+          - Avoid duplicates: skip if similar feedback already exists on/near the same lines
+
+          COMMENTING RULES:
+          - Max 10 inline comments total; prioritize 🔒 security / ⚡ performance / ⚠️ logic
+          - 1 issue per comment; point to exact line(s); concrete and actionable
+          - Emojis: 🚨 Critical 🔒 Security ⚡ Performance ⚠️ Logic ✅ Resolved ✨ Improvement
+
+          SUBMISSION:
+          - Submit one review with inline comments + a concise summary
+          - Use only: gh pr review ${{ github.event.pull_request.number }} --comment
+          - Do not approve or request changes
+          PROMPT
+          )"
