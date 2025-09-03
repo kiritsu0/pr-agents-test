@@ -1,72 +1,14 @@
-name: PR Agent
+name: Cursor Code Review
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-
 jobs:
-  pr_agent_job:
+  code-review:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
     steps:
-      - name: PR Agent action step
-        uses: qodo-ai/pr-agent@main
-        env:
-          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            # Авто-запуск инструментов для GitHub Action (опционально)
-          github_action_config.auto_review: "true"
-          github_action_config.auto_describe: "true"
-          github_action_config.auto_improve: "true"
-            # Модель (опционально)
-            # config.model: "gpt-4o"
-
-            # Доп. указания ревьюеру (multi-line)
-          pr_reviewer.extra_instructions: |
-              Follow these repository rules. If violated, point to the exact lines and suggest a fix:
-
-              1) Scope of PR
-                - One PR must change code in ONE service/directory only.
-                - If changes span multiple services/dirs, request to split the PR.
-
-              2) Vue store anti-pattern
-                - Do NOT create `watch()` inside a store.
-                - Side-effects / reactive watchers must live in a component or a composable.
-
-              3) Props signature hygiene
-                - If `defineProps` declares 4+ fields:
-                  • Require extracting a named interface/type (e.g., `Props`)
-                  • Use `defineProps<Props>()`
-                  Example BEFORE:
-                    const props = defineProps<{ a: string; b: number; c: boolean; d?: number }>();
-                  Example AFTER:
-                    interface Props { a: string; b: number; c: boolean; d?: number }
-                    const props = defineProps<Props>();
-
-              4) No inline object types in Refs
-                - For `Ref<{ ... }>` or `ref<{ ... }>()`, require a named type.
-                  BEFORE:
-                    const paginationValues: Ref<{ page: number; totalCount: number; limit: number; offset: number }>;
-                  AFTER:
-                    interface PaginationValues { page: number; totalCount: number; limit: number; offset: number }
-                    const paginationValues: Ref<PaginationValues>;
-
-              5) Magic numbers/strings
-                - Move magic literals into named `const` near usage or to `consts.ts`.
-
-              6) Class bindings
-                - If the `:class` object has >1 key AND any key depends on an expression/variable,
-                  extract the object into a `computed`.
-                  BEFORE (must extract):
-                    class="{
-                      container: true,
-                      'container--selected': container.isSelected
-                    }"
-                  AFTER: use a `computed` that returns the object and bind it.
-
-              7) Security & Performance emphasis
-                - Prioritize security vulnerabilities & performance issues.
-                - Check error handling for external calls and edge cases.
